@@ -1,0 +1,27 @@
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local data and secrets
+data/*.db
+data/*.sqlite
+data/secret.key
+
+# Logs
+logs/*.log
+
+# Generated reports/artifacts
+reports/scan_*.json
+reports/scan_*.pdf
+reports/security_test_cases_*.md
+reports/threat_model_*.md
+
+# OS/editor noise
+.DS_Store
+.vscode/
