@@ -12,6 +12,8 @@ env/
 data/*.db
 data/*.sqlite
 data/secret.key
+.env
+smtp.env
 
 # Logs
 logs/*.log

@@ -5,6 +5,17 @@ from urllib.parse import urlparse
 
 SUSPICIOUS_TLDS = {".zip", ".xyz", ".top", ".click", ".work", ".country", ".gq", ".tk"}
 URL_SHORTENERS = {"bit.ly", "tinyurl.com", "goo.gl", "t.co", "is.gd", "ow.ly", "rb.gy"}
+TRUSTED_BRANDS = {
+    "paypal": "paypal.com",
+    "google": "google.com",
+    "microsoft": "microsoft.com",
+    "apple": "apple.com",
+    "amazon": "amazon.com",
+    "netflix": "netflix.com",
+    "facebook": "facebook.com",
+    "instagram": "instagram.com",
+    "outlook": "outlook.com",
+}
 
 URL_REGEX = re.compile(r"https?://[^\s<>'\"]+", re.IGNORECASE)
 
@@ -20,6 +31,7 @@ def check_urls(email_text: str) -> list[dict[str, str | int]]:
     for url in extract_urls(email_text):
         parsed = urlparse(url)
         domain = parsed.netloc.lower()
+        compact_domain = domain.replace("-", "").replace(".", "").replace("1", "l").replace("0", "o")
 
         if parsed.scheme == "http":
             findings.append({"url": url, "issue": "insecure_http", "weight": 15})
@@ -32,5 +44,10 @@ def check_urls(email_text: str) -> list[dict[str, str | int]]:
 
         if domain.count(".") >= 3:
             findings.append({"url": url, "issue": "excessive_subdomains", "weight": 10})
+
+        for brand, trusted_domain in TRUSTED_BRANDS.items():
+            if brand in compact_domain and not domain.endswith(trusted_domain):
+                findings.append({"url": url, "issue": "brand_impersonation", "weight": 22})
+                break
 
     return findings

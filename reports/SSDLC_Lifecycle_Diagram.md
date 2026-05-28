@@ -7,7 +7,7 @@ flowchart LR
     P["🔹 Phase 1\nRequirements\n& Planning\n───────────\n• Define security\n  requirements\n• Identify stakeholders\n• Establish RBAC policy\n• Scope phishing threats"]
     T["🔹 Phase 2\nThreat\nModelling\n───────────\n• Apply STRIDE model\n• Identify attack vectors\n• DFD data flow review\n• Prioritise risks"]
     D["🔹 Phase 3\nSecure\nDesign\n───────────\n• Layered architecture\n• Trust boundary mapping\n• Least privilege design\n• Encryption strategy"]
-    I["🔹 Phase 4\nSecure\nImplementation\n───────────\n• bcrypt password hash\n• Fernet TOTP encrypt\n• Input validation\n• Parameterised SQL"]
+    I["🔹 Phase 4\nSecure\nImplementation\n───────────\n• bcrypt password hash\n• Email OTP hashing\n• Input validation\n• Parameterised SQL"]
     S["🔹 Phase 5\nSecurity\nTesting\n───────────\n• Unit tests (3 pass)\n• SQL injection checks\n• Auth bypass testing\n• Risk score validation"]
     DEP["🔹 Phase 6\nDeployment\n& Hardening\n───────────\n• Virtualenv isolation\n• Dependency pinning\n• Secrets never hardcoded\n• Minimal permissions"]
     M["🔹 Phase 7\nOperations\n& Monitoring\n───────────\n• Security event log\n• Audit trail in SQLite\n• Failed login tracking\n• Scan history retention"]
@@ -34,7 +34,7 @@ flowchart LR
 | 1 | Requirements & Planning | Defined phishing detection scope, RBAC policies, and stakeholder security expectations |
 | 2 | Threat Modelling | Applied STRIDE framework; identified spoofing, injection, privilege escalation threats |
 | 3 | Secure Design | Designed layered architecture with trust boundaries, encryption, and least privilege |
-| 4 | Secure Implementation | bcrypt hashing, Fernet encryption, parameterised SQLite queries, input validation |
+| 4 | Secure Implementation | bcrypt hashing, salted OTP code hashing, parameterised SQLite queries, input validation |
 | 5 | Security Testing | 3 unit tests, SQL injection checks, authentication bypass testing, risk scoring validation |
 | 6 | Deployment & Hardening | Virtualenv isolation, dependency pinning, no hardcoded secrets, minimal permissions |
 | 7 | Operations & Monitoring | Security event logging, failed login tracking, scan history audit trail in SQLite |

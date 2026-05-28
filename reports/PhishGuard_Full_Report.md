@@ -109,7 +109,7 @@ flowchart LR
     P["Phase 1\nRequirements & Planning\n───────────\n• Define security requirements\n• Identify stakeholders\n• Establish RBAC policy\n• Scope phishing threats"]
     T["Phase 2\nThreat Modelling\n───────────\n• Apply STRIDE model\n• Identify attack vectors\n• DFD data flow review\n• Prioritise risks"]
     D["Phase 3\nSecure Design\n───────────\n• Layered architecture\n• Trust boundary mapping\n• Least privilege design\n• Encryption strategy"]
-    I["Phase 4\nSecure Implementation\n───────────\n• bcrypt password hash\n• Fernet TOTP encrypt\n• Input validation\n• Parameterised SQL"]
+    I["Phase 4\nSecure Implementation\n───────────\n• bcrypt password hash\n• Email OTP hashing\n• Input validation\n• Parameterised SQL"]
     S["Phase 5\nSecurity Testing\n───────────\n• Unit tests (3 pass)\n• SQL injection checks\n• Auth bypass testing\n• Risk score validation"]
     DEP["Phase 6\nDeployment & Hardening\n───────────\n• Virtualenv isolation\n• Dependency pinning\n• Secrets never hardcoded\n• Minimal permissions"]
     M["Phase 7\nOperations & Monitoring\n───────────\n• Security event log\n• Audit trail in SQLite\n• Failed login tracking\n• Scan history retention"]
@@ -134,7 +134,7 @@ Figure 1 illustrates the seven SSDLC phases used throughout the PhishGuard proje
 | 1 | Requirements & Planning | Defined phishing detection scope, RBAC policies, and stakeholder security expectations |
 | 2 | Threat Modelling | Applied STRIDE framework; identified spoofing, injection, privilege escalation threats |
 | 3 | Secure Design | Designed layered architecture with trust boundaries, encryption, and least privilege |
-| 4 | Secure Implementation | bcrypt hashing, Fernet encryption, parameterised SQLite queries, input validation |
+| 4 | Secure Implementation | bcrypt hashing, salted OTP code hashing, parameterised SQLite queries, input validation |
 | 5 | Security Testing | 3 unit tests, SQL injection checks, authentication bypass testing, risk scoring validation |
 | 6 | Deployment & Hardening | Virtualenv isolation, dependency pinning, no hardcoded secrets, minimal permissions |
 | 7 | Operations & Monitoring | Security event logging, failed login tracking, scan history audit trail in SQLite |
@@ -156,7 +156,7 @@ Figure 1 illustrates the seven SSDLC phases used throughout the PhishGuard proje
 
 Confidentiality:
 
-- Encrypted OTP secret storage
+- Short-lived OTP challenges with hashed codes
 - Secure session handling
 - RBAC control
 
@@ -180,7 +180,7 @@ Availability:
 
 - Invalid credentials and OTP are rejected.
 - Passwords are hashed.
-- OTP secrets are encrypted at rest.
+- OTP codes are short-lived and never stored in plaintext.
 - Session timeout is enforced.
 - Security events are logged.
 - Malicious input patterns are blocked.
@@ -191,23 +191,80 @@ Availability:
 
 Detailed architecture page: see Architecture_Diagram.md in this reports folder.
 
-### 4.1 High-Level Architecture
+### 4.1 System Architecture
 
 ```mermaid
 flowchart LR
-    U[User] --> GUI[Tkinter GUI]
-    GUI --> AUTH[Auth Module]\
-    AUTH --> OTP[2FA Verification]
-    GUI --> DET[Detection Engine]
-    DET --> URL[URL Checker]
-    DET --> KEY[Keyword Detector]
-    DET --> ML[Naive Bayes ML Assist]
-    GUI --> DB[(SQLite Database)]
-    GUI --> LOG[Security Logging]
-    GUI --> REP[JSON/PDF Report Generator]
+    user([End User])
+    emailInput[Manual Email Text / .txt / .eml]
+
+    subgraph presentation["Presentation Layer"]
+        gui[Tkinter Desktop GUI main.py]
+    end
+
+    subgraph application["Application Core"]
+        authFlow[Login and Signup auth/login.py auth/register.py]
+        otpFlow[Email OTP Verification auth/otp.py]
+        sessionGuard[Session and RBAC Controls main.py]
+        detectionEngine[Detection Engine detection/analyzer.py]
+        keywordDetector[Keyword Detector detection/keyword_detector.py]
+        urlChecker[URL Checker detection/url_checker.py]
+        riskScorer[Risk Scoring and ML Signal detection/risk_score.py]
+        reportExporter[JSON and PDF Report Export main.py reportlab]
+    end
+
+    subgraph dataLayer["Local Data Layer"]
+        sqliteDb[(SQLite Database data/phishguard.db)]
+        usersTable[(users)]
+        scansTable[(scans)]
+        eventsTable[(security_events)]
+        appLog[Rotating App Log logs/app.log]
+        reportsDir[Reports Directory reports/]
+        smtpEnv[SMTP Config .env / smtp.env]
+    end
+
+    subgraph external["External Service"]
+        smtpServer[SMTP Mail Server]
+        userInbox[User Email Inbox]
+    end
+
+    user -->|Credentials, OTP, email text| gui
+    emailInput -->|Loaded for scanning| gui
+    gui -->|Signup and password login| authFlow
+    gui -->|OTP entry and resend| otpFlow
+    gui -->|Session timeout and role checks| sessionGuard
+    gui -->|Scan request| detectionEngine
+    gui -->|Export request| reportExporter
+
+    detectionEngine -->|Keyword analysis| keywordDetector
+    detectionEngine -->|URL extraction and checks| urlChecker
+    detectionEngine -->|Risk score and mode selection| riskScorer
+    keywordDetector -->|Indicators| riskScorer
+    urlChecker -->|URL findings| riskScorer
+    riskScorer -->|Analysis result| gui
+
+    authFlow -->|Create users and verify hashes| usersTable
+    sessionGuard -->|Read role and session context| usersTable
+    detectionEngine -->|Save scan history| scansTable
+    authFlow -->|Login and signup events| eventsTable
+    otpFlow -->|OTP events| eventsTable
+    sessionGuard -->|Session events| eventsTable
+    reportExporter -->|Export events| eventsTable
+
+    usersTable --> sqliteDb
+    scansTable --> sqliteDb
+    eventsTable --> sqliteDb
+
+    otpFlow -->|Read SMTP settings| smtpEnv
+    otpFlow -.->|Send 6 digit code| smtpServer
+    smtpServer -.->|Deliver login code| userInbox
+    userInbox -.->|Code read by user| user
+
+    detectionEngine -->|Application log entry| appLog
+    reportExporter -->|Write JSON/PDF evidence| reportsDir
 ```
 
-Short explanation: The GUI orchestrates authentication, analysis, and reporting, while persistence and audit logs are maintained in SQLite and log files.
+Short explanation: The Tkinter GUI orchestrates authentication, OTP verification, role-based access, scanning, scan history, audit logging, and report exports. SQLite stores users, scan results, and security events; JSON/PDF evidence is written to the reports folder; OTP email delivery uses SMTP settings from environment or local config files.
 
 ### 4.2 Trust Boundaries and STRIDE Threat Model Diagram
 
@@ -224,9 +281,9 @@ flowchart TD
 
     subgraph APP["🟢 Trusted Zone — Application Core"]
         AUTH["Authentication Module\nauth/login.py + auth/otp.py"]
-        OTP["2FA TOTP Verification\npyotp + Fernet encryption"]
+        OTP["Email OTP Verification\nauth/otp.py + SMTP"]
         DET["Detection Engine\ndetection/risk_score.py"]
-        REP["Report Generator\nJSON / PDF / SSDLC"]
+        REP["Report Generator\nJSON / PDF"]
     end
 
     subgraph PERSIST["🔵 Persistence Boundary — Data Layer"]
@@ -256,10 +313,10 @@ flowchart TD
 
 | STRIDE Category | Label on Diagram | Attack Vector | PhishGuard Mitigation |
 |---|---|---|---|
-| **S** — Spoofing | Forged credentials | Fake username/password | bcrypt hashing + TOTP 2FA |
+| **S** — Spoofing | Forged credentials | Fake username/password | bcrypt hashing + email OTP 2FA |
 | **T** — Tampering | Malicious email payload | Injected script/SQL in email text | Input validation, parameterised SQL |
 | **R** — Repudiation | Deny actions | User denies scanning malicious content | Timestamped security event log in SQLite |
-| **I** — Information Disclosure | Sensitive data in export | OTP secret or hash leakage | Fernet encryption, no plaintext secrets |
+| **I** — Information Disclosure | Sensitive data in export | OTP/config leakage | salted OTP challenge hashing, SMTP config outside source, no plaintext passwords |
 | **D** — Denial of Service | Oversized input flood | Huge email bodies crashing parser | Input length cap in validation layer |
 | **E** — Elevation of Privilege | Role bypass attempt | Standard user accessing admin events | RBAC checks enforced in GUI + DB layer |
 
@@ -272,7 +329,7 @@ Short explanation: Trust boundaries are enforced where untrusted content enters 
 | Spoofing | Fake login attempts | bcrypt password checks + OTP |
 | Tampering | Report manipulation attempts | Audit logs and controlled exports |
 | Repudiation | User denies suspicious actions | Timestamped security events |
-| Information Disclosure | Secret leakage risk | Encrypted OTP secret storage |
+| Information Disclosure | Secret leakage risk | OTP codes are hashed, short-lived, and kept out of persistent storage |
 | DoS | Oversized malicious input | Input length validation |
 | Elevation of Privilege | Standard user accesses admin events | RBAC checks in UI |
 
@@ -295,7 +352,6 @@ Short explanation: Trust boundaries are enforced where untrusted content enters 
 Roles:
 
 - Admin
-- Security Analyst
 - Standard User
 
 Only admin can fully view security audit events.
@@ -309,7 +365,7 @@ Implemented layers:
 - Input validation layer
 - Detection layer (heuristic + ML)
 - Logging and reporting layer
-- Encrypted secret storage layer
+- Short-lived OTP challenge layer
 
 ### 5.3 Fail-Secure Behavior
 
@@ -335,8 +391,8 @@ Implemented layers:
 |---|---|
 | Programming Language | Python |
 | GUI | Tkinter |
-| Authentication | bcrypt, pyotp |
-| Encryption | cryptography (Fernet) |
+| Authentication | bcrypt, email OTP |
+| OTP Delivery | smtplib with SMTP environment/config settings |
 | Database | SQLite |
 | Reporting | JSON, reportlab (PDF) |
 | Testing | unittest |
@@ -371,15 +427,14 @@ flowchart TD
     LOG1 --> LOCK{Max Attempts\nReached?}
     LOCK -- Yes --> BLK[Account Locked\nSession Ended]
     LOCK -- No --> LP
-    PV -- Pass --> OTP[OTP Screen\nEnter 6-Digit TOTP Code]
-    OTP --> OV{pyotp TOTP\nVerification}
+    PV -- Pass --> OTP[OTP Screen\nEnter 6-Digit Email Code]
+    OTP --> OV{Salted Hash OTP\nVerification}
     OV -- Fail --> LOG2[Log OTP Failure\nto Security Events]
     LOG2 --> OTP
     OV -- Pass --> RBAC{RBAC Role\nCheck}
     RBAC -- Admin --> ADMIN[Full Dashboard\nAll Tabs + Security Events]
-    RBAC -- Analyst --> ANALYST[Analyst Dashboard\nEmail Analysis + Scan History]
     RBAC -- User --> USER[Standard Dashboard\nEmail Analysis Only]
-    ADMIN & ANALYST & USER --> SESS[Active Session\nPhishGuard Ready]
+    ADMIN & USER --> SESS[Active Session\nPhishGuard Ready]
     SESS --> LOGOUT([User Logs Out\nSession Cleared])
 ```
 
@@ -413,9 +468,8 @@ flowchart TD
     Q --> R{Export Requested?}
     R -- JSON --> S[Export JSON Report]
     R -- PDF --> T[Export PDF Report]
-    R -- SSDLC --> U[Export SSDLC Artifact]
     R -- No --> V[User Reviews Results]
-    S & T & U --> V
+    S & T --> V
     V --> W([End / New Scan])
 ```
 
@@ -431,63 +485,70 @@ Figure 6 shows the complete end-to-end workflow of the PhishGuard system. From a
 flowchart LR
     subgraph ACTORS[Actors]
         U([Standard User])
-        AN([Security Analyst])
         AD([Administrator])
     end
 
     subgraph UC[PhishGuard Use Cases]
-        UC1[Login with Password]
-        UC2[Verify OTP / 2FA]
-        UC3[Analyse Email Content]
-        UC4[View Scan History]
-        UC5[Export JSON Report]
-        UC6[Export PDF Report]
-        UC7[Export SSDLC Artifact]
-        UC8[View Security Events]
-        UC9[Manage User Accounts]
-        UC10[Select Detection Mode]
+        UC1[Create Account]
+        UC2[Login with Password]
+        UC3[Verify Email OTP / 2FA]
+        UC4[Load TXT / EML Email File]
+        UC5[Analyse Email Content]
+        UC6[Select Detection Mode]
+        UC7[View Scan History]
+        UC8[Export JSON Report]
+        UC9[Export PDF Report]
+        UC10[View Security Events]
+        UC11[Logout]
     end
 
-    U --> UC1 & UC2 & UC3 & UC4 & UC5 & UC10
-    AN --> UC1 & UC2 & UC3 & UC4 & UC5 & UC6 & UC7 & UC10
-    AD --> UC1 & UC2 & UC3 & UC4 & UC5 & UC6 & UC7 & UC8 & UC9 & UC10
+    U --> UC1 & UC2 & UC3 & UC4 & UC5 & UC6 & UC7 & UC8 & UC9 & UC11
+    AD --> UC2 & UC3 & UC4 & UC5 & UC6 & UC7 & UC8 & UC9 & UC10 & UC11
 ```
 
 **Figure 7: PhishGuard Use Case Diagram.**
 
-Figure 7 presents the use case diagram showing interactions between the three system roles and available PhishGuard features. Standard Users can analyse emails and export basic reports. Security Analysts additionally export PDF and SSDLC artifacts. Administrators have full access including security event audit views and account management.
+Figure 7 presents the use case diagram showing interactions between the two implemented system roles and available PhishGuard features. Standard Users can create accounts, authenticate, analyse emails, review scan history, and export reports. Administrators have the same scanning and reporting features, plus access to security event monitoring.
 
-| Use Case | Standard User | Security Analyst | Administrator |
-|---|---|---|---|
-| Login with Password | ✅ | ✅ | ✅ |
-| Verify OTP / 2FA | ✅ | ✅ | ✅ |
-| Analyse Email Content | ✅ | ✅ | ✅ |
-| View Scan History | ✅ | ✅ | ✅ |
-| Export JSON Report | ✅ | ✅ | ✅ |
-| Select Detection Mode | ✅ | ✅ | ✅ |
-| Export PDF Report | ❌ | ✅ | ✅ |
-| Export SSDLC Artifact | ❌ | ✅ | ✅ |
-| View Security Events | ❌ | ❌ | ✅ |
-| Manage User Accounts | ❌ | ❌ | ✅ |
+| Use Case | Standard User | Administrator |
+|---|---|---|
+| Create Account | Yes | No |
+| Login with Password | Yes | Yes |
+| Verify Email OTP / 2FA | Yes | Yes |
+| Load TXT / EML Email File | Yes | Yes |
+| Analyse Email Content | Yes | Yes |
+| Select Detection Mode | Yes | Yes |
+| View Scan History | Yes | Yes |
+| Export JSON Report | Yes | Yes |
+| Export PDF Report | Yes | Yes |
+| View Security Events | No | Yes |
+| Logout | Yes | Yes |
 
 ---
 
-### 6.3 OTP and Encrypted Secret Handling Snippet
+### 6.3 OTP Challenge Handling Snippet
 
 ```python
-# database/database.py
+# auth/otp.py
 
-def _encrypt(value: str) -> str:
-    return _fernet().encrypt(value.encode("utf-8")).decode("utf-8")
+def start_email_otp(email: str) -> EmailOTPChallenge:
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    salt = secrets.token_hex(16)
+    challenge = EmailOTPChallenge(
+        email=email,
+        salt=salt,
+        code_hash=_hash_code(code, salt),
+        expires_at=datetime.now(timezone.utc) + timedelta(seconds=OTP_TTL_SECONDS),
+    )
+    send_otp_email(email, code)
+    return challenge
 
 
-def verify_user_otp(username: str, code: str) -> tuple[bool, str]:
-    # ... fetch encrypted secret from DB
-    secret = _decrypt(row["totp_secret_enc"])
-    valid = bool(pyotp.TOTP(secret).verify(code, valid_window=1))
+def _hash_code(code: str, salt: str) -> str:
+    return hashlib.sha256(f"{salt}:{code}".encode("utf-8")).hexdigest()
 ```
 
-Short explanation: TOTP secrets are encrypted at rest, then decrypted only during OTP validation.
+Short explanation: The one-time code is sent by email, while only a salted hash of the code is kept in the active in-memory challenge. The challenge expires after five minutes and limits failed attempts.
 
 ### 6.4 Input Validation Snippet
 
@@ -579,7 +640,7 @@ Observed result:
 | Issue | Mitigation Implemented |
 |---|---|
 | Weak credential protection | bcrypt hashing |
-| OTP secret exposure risk | Fernet encryption |
+| OTP code exposure risk | Salted code hash, 5-minute expiry, max attempts, SMTP config outside source |
 | Unsafe input content | Validation and sanitization |
 | Missing traceability | Event logging and scan history |
 

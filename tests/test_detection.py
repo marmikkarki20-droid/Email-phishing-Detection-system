@@ -27,6 +27,26 @@ class DetectionTests(unittest.TestCase):
         self.assertIn("insecure_http", issues)
         self.assertIn("url_shortener", issues)
 
+    def test_url_checker_flags_brand_impersonation(self) -> None:
+        text = "Verify here: https://google-secure-login.com/account"
+        findings = check_urls(text)
+        issues = {f["issue"] for f in findings}
+        self.assertIn("brand_impersonation", issues)
+
+    def test_risk_score_flags_attachment_and_sensitive_request(self) -> None:
+        text = (
+            "From: billing@paypa1-security.com\n"
+            "Subject: Urgent invoice\n"
+            "Dear customer, verify immediatly and send your password.\n"
+            "Attachment: invoice.docm"
+        )
+        result = calculate_risk(text, mode="heuristic")
+        names = {indicator.name for indicator in result.indicators}
+        self.assertIn("brand impersonation", names)
+        self.assertIn("risky attachment language", names)
+        self.assertIn("sensitive information request", names)
+        self.assertIn("Suggested actions:", result.explanation)
+
     def test_risk_score_higher_for_phishing_than_legit(self) -> None:
         phishing = "From: a@fake.com\nSubject: urgent\nClick here: http://bit.ly/now"
         legit = "From: support@microsoft.com\nSubject: Receipt\nVisit https://microsoft.com"
